@@ -161,7 +161,6 @@
 </div>
 
 <script>
-    // URL fija de MI propio servicio — no se toca ni se configura desde la interfaz
     const API_URL = "https://iot-week6-production.up.railway.app/data";
 
     const $ = id => document.getElementById(id);
@@ -192,7 +191,15 @@
         dot.className = 'dot ' + (state === 'ok' ? 'live' : state === 'err' ? 'err' : '');
         $('statusText').textContent = text;
     }
+
     function initChart(){
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js no se cargó (posible bloqueo del CDN).');
+            $('.chart-holder') && null;
+            document.querySelector('.chart-holder').innerHTML =
+                '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#7C8AA5;font-family:\'IBM Plex Mono\',monospace;font-size:13px;text-align:center;padding:20px;">No se pudo cargar la librería de gráficos (Chart.js).<br>Los datos igual se muestran abajo en las tarjetas y la tabla.</div>';
+            return false;
+        }
         const ctx = $('scopeChart').getContext('2d');
         chart = new Chart(ctx, {
             type:'line',
@@ -220,21 +227,25 @@
                 }
             }
         });
+        return true;
     }
+
     function render(items){
         if(!items || items.length === 0){
             $('logBody').innerHTML = '<tr><td colspan="5" class="dim" style="text-align:center;padding:24px;">Sin registros todavía</td></tr>';
             return;
         }
         const withTs = items.map((it, i) => ({...it, __ts: extractTimestamp(it, items.length - i)}));
-        const labels = withTs.map(it => new Date(it.__ts).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'}));
-        const temps = withTs.map(it => Number(it.temperature ?? it.temp ?? 0));
-        const hums = withTs.map(it => Number(it.humidity ?? it.hum ?? 0));
 
-        chart.data.labels = labels;
-        chart.data.datasets[0].data = temps;
-        chart.data.datasets[1].data = hums;
-        chart.update();
+        if (chart) {
+            const labels = withTs.map(it => new Date(it.__ts).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'}));
+            const temps = withTs.map(it => Number(it.temperature ?? it.temp ?? 0));
+            const hums = withTs.map(it => Number(it.humidity ?? it.hum ?? 0));
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = temps;
+            chart.data.datasets[1].data = hums;
+            chart.update();
+        }
 
         const last = withTs[withTs.length - 1];
         $('statTemp').innerHTML = (Number(last.temperature ?? last.temp ?? 0)).toFixed(1) + '<span class="unit">°C</span>';
@@ -255,6 +266,7 @@
     </tr>`).join('');
         $('logBody').innerHTML = rows;
     }
+
     async function fetchData(){
         try{
             const res = await fetch(API_URL);
@@ -265,9 +277,15 @@
             setStatus('ok', 'En línea');
         }catch(err){
             setStatus('err', 'Error: ' + err.message);
+            console.error(err);
         }
     }
-    initChart();
+
+    try {
+        initChart();
+    } catch (e) {
+        console.error('Error inicializando el gráfico:', e);
+    }
     fetchData();
     setInterval(fetchData, 10000);
 </script>
