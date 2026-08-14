@@ -7,12 +7,16 @@ const PORT = process.env.PORT || 3000;
 // Datos del estudiante / proyecto
 const ESTUDIANTE = "Camilo Escobar";
 
-// URL del servicio del profesor (se puede sobreescribir con una variable
-// de entorno TEACHER_URL en Railway sin tocar el código)
-const TEACHER_URL = process.env.TEACHER_URL || "https://callback-iot-service-production.up.railway.app/data";
-
 // Middleware para recibir JSON
 app.use(express.json());
+
+// ============================================
+// "Base de datos" en memoria
+// (se reinicia si Railway reinicia el servicio; para un proyecto de
+// clase es suficiente, no necesitas una base de datos real)
+// ============================================
+let registros = [];
+const MAX_REGISTROS = 500; // evita que la memoria crezca sin límite
 
 // ============================================
 // GET / - Info del servicio
@@ -22,35 +26,26 @@ app.get("/", (req, res) => {
         servicio: "IoT Service - Camilo Escobar",
         estudiante: ESTUDIANTE,
         endpoints: {
-            "GET /data": "Últimos registros recibidos del profesor",
-            "POST /visualize": "Envía datos de mis sensores al profesor"
+            "GET /data": "Devuelve mis últimos registros guardados",
+            "POST /visualize": "Recibe datos de mi ESP32 y los guarda"
         },
+        totalRegistros: registros.length,
         estado: "activo"
     });
 });
 
 // ============================================
-// GET /data - Obtiene los últimos registros del profesor
+// GET /data - Devuelve los últimos registros guardados
 // ============================================
-app.get("/data", async (req, res) => {
-    try {
-        const respuesta = await fetch(TEACHER_URL);
-        const datos = await respuesta.json();
-        const ultimosRegistros = datos.slice(-100);
-        res.json(ultimosRegistros);
-    } catch (error) {
-        console.error(`❌ [${ESTUDIANTE}] Error en GET /data:`, error.message);
-        res.status(500).json({
-            error: "No se pudieron obtener los datos del profesor",
-            mensaje: error.message
-        });
-    }
+app.get("/data", (req, res) => {
+    const ultimosRegistros = registros.slice(-100);
+    res.json(ultimosRegistros);
 });
 
 // ============================================
-// POST /visualize - Recibe datos y los envía al profesor
+// POST /visualize - Recibe datos del ESP32 y los guarda
 // ============================================
-app.post("/visualize", async (req, res) => {
+app.post("/visualize", (req, res) => {
     const datosRecibidos = req.body;
 
     // Validar que llegaron datos
@@ -61,43 +56,29 @@ app.post("/visualize", async (req, res) => {
         });
     }
 
-    try {
-        console.log(`📥 [${ESTUDIANTE}] Datos recibidos del ESP32:`, datosRecibidos);
+    console.log(`📥 [${ESTUDIANTE}] Datos recibidos del ESP32:`, datosRecibidos);
 
-        // Enviar los datos al profesor en Railway
-        const respuestaProfesor = await fetch(TEACHER_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(datosRecibidos)
-        });
+    // Le agregamos un timestamp propio y lo guardamos
+    const registro = {
+        ...datosRecibidos,
+        timestamp: new Date().toISOString()
+    };
 
-        if (!respuestaProfesor.ok) {
-            throw new Error(`Error del profesor: ${respuestaProfesor.status}`);
-        }
+    registros.push(registro);
 
-        const resultadoProfesor = await respuestaProfesor.json();
-
-        console.log(`✅ [${ESTUDIANTE}] Datos enviados al profesor correctamente`);
-
-        // Responder al estudiante
-        res.json({
-            mensaje: "✅ Datos enviados al profesor correctamente",
-            estudiante: ESTUDIANTE,
-            datosEnviados: datosRecibidos,
-            respuestaProfesor: resultadoProfesor,
-            timestamp: new Date().toISOString()
-        });
-
-    } catch (error) {
-        console.error(`❌ [${ESTUDIANTE}] Error en POST /visualize:`, error.message);
-        res.status(500).json({
-            error: "No se pudo enviar al profesor",
-            mensaje: error.message,
-            sugerencia: "Verifica que el servicio del profesor esté activo"
-        });
+    // Si nos pasamos del máximo, botamos los más viejos
+    if (registros.length > MAX_REGISTROS) {
+        registros = registros.slice(-MAX_REGISTROS);
     }
+
+    console.log(`✅ [${ESTUDIANTE}] Guardado. Total registros: ${registros.length}`);
+
+    res.json({
+        mensaje: "✅ Datos guardados correctamente",
+        estudiante: ESTUDIANTE,
+        registroGuardado: registro,
+        totalRegistros: registros.length
+    });
 });
 
 // ============================================
@@ -105,7 +86,6 @@ app.post("/visualize", async (req, res) => {
 // ============================================
 app.listen(PORT, () => {
     console.log(`✅ [${ESTUDIANTE}] Servidor corriendo en el puerto ${PORT}`);
-    console.log(`📊 GET  /data       -> últimos registros del profesor`);
-    console.log(`📤 POST /visualize  -> enviar datos al profesor`);
-    console.log(`💡 Profesor: ${TEACHER_URL}`);
+    console.log(`📊 GET  /data       -> ver mis datos guardados`);
+    console.log(`📤 POST /visualize  -> guardar datos del ESP32`);
 });
