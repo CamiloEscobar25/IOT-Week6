@@ -10,6 +10,11 @@ const ESTUDIANTE = "Camilo Escobar";
 // Middleware para recibir JSON
 app.use(express.json());
 
+// Sirve el dashboard.html en /dashboard
+app.get("/dashboard", (req, res) => {
+    res.sendFile(__dirname + "/dashboard.html");
+});
+
 // ============================================
 // "Base de datos" en memoria
 // (se reinicia si Railway reinicia el servicio; para un proyecto de
