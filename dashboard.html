@@ -319,8 +319,8 @@
         // Parsear valores
         const t = Number(last.temp ?? 0);
         const h = Number(last.hum ?? 0);
-        let rawGas = Number(last.gas ?? 0);
-        const g = rawGas > 100 ? (rawGas / 4095) * 100 : rawGas;
+        const rawGas = Number(last.gas ?? 0);
+        const g = rawGas > 1000 ? (rawGas / 4095) * 100000 : rawGas;
         const d = Number(last.dist ?? 0);
 
         // Actualizar Tarjetas
@@ -331,7 +331,7 @@
         $('statTime').textContent = "Última act: " + fmtTime(last.__ts);
 
         // Lógica de Alarma
-        const isAlert = (t > 37.0) || (g > 30.0);
+        const isAlert = (t > 37.0) || (g > 0.2);
         const cardStatus = $('cardStatus');
         const statStatus = $('statStatus');
         const ledStatus = $('ledStatus');
@@ -355,8 +355,8 @@
         const tableHTML = [...items].reverse().slice(0, 10).map(it => {
             const _t = Number(it.temp ?? 0);
             let _g = Number(it.gas ?? 0);
-            _g = _g > 100 ? (_g / 4095) * 100 : _g;
-            const danger = (_t > 37 || _g > 30);
+            _g = _g > 1000 ? (_g / 4095) * 100000 : _g;
+            const danger = (_t > 37 || _g > 0.2);
 
             return `
             <tr>
