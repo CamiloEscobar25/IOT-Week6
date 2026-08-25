@@ -3,334 +3,442 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telemetría IoT - Camilo Escobar</title>
+    <title>SCADA HMI | Monitoreo de Planta</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
-        :root{
-            --ink:#0A0F1C;
-            --panel:#101828;
-            --panel-2:#151F33;
-            --grid:#22304A;
-            --amber:#F5A742;
-            --cyan:#4DD8D0;
-            --cyan-dim:#2E6E6A;
-            --text:#E7EDF5;
-            --text-dim:#7C8AA5;
-            --red:#E5595C;
-            --green:#5FD98A;
-            --radius:10px;
+        /* ================== VARIABLES Y TEMA ================== */
+        :root {
+            --bg-dark: #0A0E17;
+            --panel-bg: rgba(17, 24, 39, 0.85);
+            --panel-border: #1F2937;
+            --text-main: #F9FAFB;
+            --text-muted: #9CA3AF;
+
+            /* Colores de Sistema SCADA */
+            --c-temp: #F97316;   /* Naranja */
+            --c-hum: #06B6D4;    /* Cyan */
+            --c-gas: #EAB308;    /* Amarillo */
+            --c-dist: #3B82F6;   /* Azul */
+            --c-ok: #10B981;     /* Verde */
+            --c-alert: #EF4444;  /* Rojo */
+
+            --glow-spread: 12px;
         }
-        *{box-sizing:border-box;}
-        body{
-            margin:0;
-            background:
-                    radial-gradient(ellipse at 20% -10%, #14213D 0%, transparent 55%),
-                    radial-gradient(ellipse at 100% 0%, #0F1B2E 0%, transparent 50%),
-                    var(--ink);
-            color:var(--text);
-            font-family:'IBM Plex Sans Condensed', sans-serif;
-            min-height:100vh;
-            padding:28px 20px 60px;
+
+        /* ================== BASE ================== */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image:
+                    linear-gradient(rgba(31, 41, 55, 0.4) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(31, 41, 55, 0.4) 1px, transparent 1px);
+            background-size: 40px 40px;
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            padding: 20px 40px;
+            min-height: 100vh;
+            transition: box-shadow 0.4s ease, background-color 0.4s ease;
         }
-        .wrap{max-width:1100px;margin:0 auto;}
-        header{
-            display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;
-            margin-bottom:26px;border-bottom:1px solid var(--grid);padding-bottom:18px;
+
+        /* Alerta Crítica (Fondo palpitante) */
+        body.alert-mode {
+            box-shadow: inset 0 0 150px rgba(239, 68, 68, 0.2);
+            animation: pulseBg 2s infinite;
         }
-        .eyebrow{
-            font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;
-            color:var(--cyan);text-transform:uppercase;margin-bottom:6px;
+        @keyframes pulseBg { 0%, 100% { background-color: var(--bg-dark); } 50% { background-color: #1a0a0a; } }
+
+        .container { max-width: 1400px; margin: 0 auto; }
+
+        /* ================== CABECERA ================== */
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 2px solid var(--panel-border);
+            padding-bottom: 15px; margin-bottom: 25px;
         }
-        h1{margin:0;font-size:30px;font-weight:700;letter-spacing:.01em;}
-        .status{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-dim);}
-        .dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0;}
-        .dot.live{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.6s ease-in-out infinite;}
-        .dot.err{background:var(--red);box-shadow:0 0 8px var(--red);}
-        @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
-        @media (prefers-reduced-motion: reduce){.dot.live{animation:none;}}
-        .scope{
-            position:relative;
-            background:
-                    repeating-linear-gradient(0deg, transparent, transparent 24px, rgba(77,216,208,0.045) 25px),
-                    repeating-linear-gradient(90deg, transparent, transparent 24px, rgba(77,216,208,0.045) 25px),
-                    var(--panel);
-            border:1px solid var(--grid);border-radius:var(--radius);padding:18px 16px 10px;margin-bottom:22px;overflow:hidden;
+
+        .title-box p { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--c-hum); letter-spacing: 2px; margin-bottom: 5px; text-transform: uppercase;}
+        .title-box h1 { font-size: 32px; font-weight: 800; letter-spacing: 1px; text-shadow: 0 0 15px rgba(6, 182, 212, 0.4); }
+
+        .sys-status {
+            display: flex; align-items: center; gap: 12px;
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
+            padding: 10px 20px; border-radius: 8px;
+            font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600;
         }
-        .scope::before{
-            content:"";position:absolute;top:0;left:-100%;width:60%;height:100%;
-            background:linear-gradient(90deg, transparent, rgba(77,216,208,0.06), transparent);
-            animation:sweep 6s linear infinite;pointer-events:none;
+        .led { width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted); }
+        .led.live { background: var(--c-ok); box-shadow: 0 0 10px var(--c-ok); }
+        .led.err { background: var(--c-alert); box-shadow: 0 0 10px var(--c-alert); }
+
+        /* ================== PANELES DE METRICAS (GRID) ================== */
+        .metrics-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px; margin-bottom: 30px;
         }
-        @media (prefers-reduced-motion: reduce){.scope::before{animation:none;display:none;}}
-        @keyframes sweep{0%{left:-60%;}100%{left:120%;}}
-        .scope-head{
-            display:flex;justify-content:space-between;align-items:center;
-            font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);
-            letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px; padding: 20px;
+            backdrop-filter: blur(10px);
+            position: relative; overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
-        .legend{display:flex;gap:16px;}
-        .legend span{display:flex;align-items:center;gap:6px;}
-        .swatch{width:10px;height:3px;border-radius:2px;display:inline-block;}
-        .chart-holder{height:280px;}
-        .stats{display:grid;grid-template-columns:repeat(auto-fit, minmax(150px,1fr));gap:12px;margin-bottom:22px;}
-        .card{background:var(--panel);border:1px solid var(--grid);border-radius:var(--radius);padding:16px;position:relative;}
-        .card .label{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;}
-        .card .value{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:600;line-height:1;}
-        .card .value.amber{color:var(--amber);}
-        .card .value.cyan{color:var(--cyan);}
-        .card .unit{font-size:14px;color:var(--text-dim);margin-left:2px;}
-        .card .sub{font-size:12px;color:var(--text-dim);margin-top:6px;font-family:'IBM Plex Mono',monospace;}
-        .log-title{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--text-dim);margin:0 0 10px 2px;}
-        .log{background:var(--panel);border:1px solid var(--grid);border-radius:var(--radius);overflow:hidden;}
-        table{width:100%;border-collapse:collapse;font-family:'IBM Plex Mono',monospace;font-size:13px;}
-        thead th{
-            text-align:left;padding:10px 14px;color:var(--text-dim);font-size:10px;letter-spacing:.1em;
-            text-transform:uppercase;border-bottom:1px solid var(--grid);background:var(--panel-2);
+
+        /* Bordes superiores de colores */
+        .panel::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: var(--panel-border); }
+        .p-temp::before { background: var(--c-temp); box-shadow: 0 0 var(--glow-spread) var(--c-temp); }
+        .p-gas::before { background: var(--c-gas); box-shadow: 0 0 var(--glow-spread) var(--c-gas); }
+        .p-hum::before { background: var(--c-hum); box-shadow: 0 0 var(--glow-spread) var(--c-hum); }
+        .p-dist::before { background: var(--c-dist); box-shadow: 0 0 var(--glow-spread) var(--c-dist); }
+        .p-system.safe::before { background: var(--c-ok); box-shadow: 0 0 var(--glow-spread) var(--c-ok); }
+        .p-system.danger::before { background: var(--c-alert); box-shadow: 0 0 var(--glow-spread) var(--c-alert); }
+
+        .p-header {
+            display: flex; justify-content: space-between; align-items: center;
+            font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+            color: var(--text-muted); text-transform: uppercase; margin-bottom: 15px;
         }
-        tbody td{padding:9px 14px;border-bottom:1px solid var(--grid);color:var(--text);}
-        tbody tr:last-child td{border-bottom:none;}
-        tbody tr:hover{background:var(--panel-2);}
-        td.amber{color:var(--amber);}
-        td.cyan{color:var(--cyan);}
-        td.dim{color:var(--text-dim);}
-        footer{text-align:center;margin-top:30px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);}
+
+        .p-value { font-family: 'IBM Plex Mono', monospace; font-size: 42px; font-weight: 700; line-height: 1; }
+        .p-unit { font-size: 18px; font-weight: 400; color: var(--text-muted); margin-left: 5px; }
+        .p-sub { font-size: 12px; color: var(--text-muted); margin-top: 10px; font-weight: 600; }
+
+        .val-temp { color: var(--c-temp); text-shadow: 0 0 10px rgba(249, 115, 22, 0.3); }
+        .val-gas { color: var(--c-gas); text-shadow: 0 0 10px rgba(234, 179, 8, 0.3); }
+        .val-hum { color: var(--c-hum); }
+        .val-dist { color: var(--c-dist); }
+        .val-alert { color: var(--c-alert); text-shadow: 0 0 15px rgba(239, 68, 68, 0.6); animation: flash 1s infinite; }
+
+        @keyframes flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+        /* ================== BOTON INDUSTRIAL ================== */
+        .btn-industrial {
+            display: block; width: 100%; margin-top: 12px; padding: 12px;
+            background: #374151; color: #fff; font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px; font-weight: 700; text-align: center; cursor: pointer;
+            border: 2px solid #4B5563; border-radius: 6px;
+            box-shadow: 0 4px 0 #1F2937, inset 0 1px 1px rgba(255,255,255,0.2);
+            transition: all 0.1s; text-transform: uppercase;
+        }
+        .btn-industrial:active { transform: translateY(4px); box-shadow: 0 0 0 #1F2937; }
+
+        .btn-industrial.active {
+            background: var(--c-temp); border-color: #C2410C;
+            box-shadow: 0 4px 0 #7C2D12, inset 0 1px 1px rgba(255,255,255,0.3);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+        .btn-industrial.active:active { transform: translateY(4px); box-shadow: 0 0 0 #7C2D12; }
+
+        /* ================== GRAFICA Y TABLA ================== */
+        .dashboard-main { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        @media (max-width: 1024px) { .dashboard-main { grid-template-columns: 1fr; } }
+
+        .chart-panel { background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 20px; }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-muted); }
+        .legend span { display: inline-flex; align-items: center; gap: 8px; margin-left: 15px; color: var(--text-main); font-weight: 600;}
+        .dot-leg { width: 10px; height: 10px; border-radius: 50%; }
+
+        .table-panel { background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 20px; overflow: hidden; display: flex; flex-direction: column; }
+        table { width: 100%; border-collapse: collapse; font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: left; }
+        th { padding: 12px; border-bottom: 1px solid var(--panel-border); color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+        td { padding: 10px 12px; border-bottom: 1px solid rgba(31, 41, 55, 0.5); }
+        tr:hover { background: rgba(31, 41, 55, 0.4); }
+        .t-time { color: var(--text-muted); }
+
+        footer { text-align: center; margin-top: 40px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-muted); }
     </style>
 </head>
 <body>
-<div class="wrap">
+
+<div class="container">
+    <!-- CABECERA -->
     <header>
-        <div>
-            <div class="eyebrow">ESP32 // Camilo Escobar</div>
-            <h1>Telemetría en vivo</h1>
+        <div class="title-box">
+            <p>HMI SUPERVISOR // ESP32 + MQTT</p>
+            <h1>SISTEMA SCADA - PLANTA 1</h1>
         </div>
-        <div class="status">
-            <span class="dot" id="statusDot"></span>
-            <span id="statusText">Conectando...</span>
+        <div class="sys-status">
+            <span class="led" id="statusDot"></span>
+            <span id="statusText">CONECTANDO...</span>
         </div>
     </header>
 
-    <div class="scope">
-        <div class="scope-head">
-            <span>Canal dual — temperatura / humedad</span>
-            <div class="legend">
-                <span><i class="swatch" style="background:var(--amber)"></i>Temp °C</span>
-                <span><i class="swatch" style="background:var(--cyan)"></i>Humedad %</span>
+    <!-- PANELES DE METRICAS -->
+    <div class="metrics-grid">
+
+        <div class="panel p-system safe" id="cardStatus">
+            <div class="p-header"><span>Estado General</span> <span class="led live" id="ledStatus"></span></div>
+            <div class="p-value" style="color: var(--c-ok);" id="statStatus">OPERATIVO</div>
+            <div class="p-sub" id="statTime">Esperando telemetría...</div>
+        </div>
+
+        <div class="panel p-temp">
+            <div class="p-header"><span>Temp. Interna</span> <span class="led" style="background:var(--c-temp)"></span></div>
+            <div class="p-value val-temp"><span id="statTemp">--.-</span><span class="p-unit">°C</span></div>
+            <div class="p-sub">Límite Crítico: 37.0°C</div>
+        </div>
+
+        <div class="panel p-gas">
+            <div class="p-header"><span>Gas (MQ-2)</span> <span class="led" style="background:var(--c-gas)"></span></div>
+            <div class="p-value val-gas"><span id="statGas">--.-</span><span class="p-unit">%</span></div>
+            <div class="p-sub">Riesgo de Fuga > 30%</div>
+        </div>
+
+        <div class="panel p-hum">
+            <div class="p-header"><span>Humedad</span></div>
+            <div class="p-value val-hum"><span id="statHum">--.-</span><span class="p-unit">%</span></div>
+            <div class="p-sub">Ambiente Normal</div>
+        </div>
+
+        <div class="panel p-dist">
+            <div class="p-header"><span>Puerta/Acceso</span></div>
+            <div class="p-value val-dist"><span id="statDist">--</span><span class="p-unit">cm</span></div>
+            <div class="p-sub">Sensor Ultrasónico</div>
+        </div>
+
+        <div class="panel">
+            <div class="p-header"><span>Extractor / Ventilación</span></div>
+            <div class="p-value" style="font-size:24px; margin-bottom:10px; color:var(--text-muted);" id="statServo">CERRADO</div>
+            <button class="btn-industrial" id="btnServo" onclick="toggleServo()">ACTIVAR MANUAL</button>
+        </div>
+
+    </div>
+
+    <!-- AREA PRINCIPAL (GRAFICA Y TABLA) -->
+    <div class="dashboard-main">
+        <div class="chart-panel">
+            <div class="chart-header">
+                <span>TELEMETRÍA MULTIVARIABLE (TIEMPO REAL)</span>
+                <div class="legend">
+                    <span><i class="dot-leg" style="background:var(--c-temp)"></i> Temp</span>
+                    <span><i class="dot-leg" style="background:var(--c-hum)"></i> Hum</span>
+                    <span><i class="dot-leg" style="background:var(--c-gas)"></i> Gas</span>
+                </div>
+            </div>
+            <div style="height: 350px; position: relative;">
+                <canvas id="scopeChart"></canvas>
             </div>
         </div>
-        <div class="chart-holder"><canvas id="scopeChart"></canvas></div>
-    </div>
 
-    <div class="stats">
-        <div class="card">
-            <div class="label">Temperatura</div>
-            <div class="value amber" id="statTemp">--<span class="unit">°C</span></div>
-            <div class="sub" id="statDevice">—</div>
-        </div>
-        <div class="card">
-            <div class="label">Humedad</div>
-            <div class="value cyan" id="statHum">--<span class="unit">%</span></div>
-            <div class="sub" id="statEnvio">envío #--</div>
-        </div>
-        <div class="card">
-            <div class="label">Última lectura</div>
-            <div class="value" id="statAgo" style="font-size:20px;">--</div>
-            <div class="sub" id="statTime">—</div>
-        </div>
-        <div class="card">
-            <div class="label">Registros</div>
-            <div class="value" id="statCount" style="font-size:20px;">--</div>
-            <div class="sub">últimos recibidos</div>
+        <div class="table-panel">
+            <div class="chart-header"><span>LOG DE EVENTOS (Últimos 10)</span></div>
+            <table id="dataTable">
+                <thead>
+                <tr><th>Hora</th><th>T(°C)</th><th>G(%)</th><th>Est.</th></tr>
+                </thead>
+                <tbody id="logBody">
+                <tr><td colspan="4" style="text-align:center; color:#6C7A9C;">A la espera de datos...</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
-    <p class="log-title">Registro // últimas lecturas</p>
-    <div class="log">
-        <table>
-            <thead>
-            <tr><th>#</th><th>Dispositivo</th><th>Temp °C</th><th>Humedad %</th><th>Hora</th></tr>
-            </thead>
-            <tbody id="logBody">
-            <tr><td colspan="5" class="dim" style="text-align:center;padding:24px;">Esperando datos...</td></tr>
-            </tbody>
-        </table>
-    </div>
-
-    <footer>Refresco automático cada 10s</footer>
+    <footer>TRANSMISIÓN SEGURA TLS/SSL - MQTT WEBSOCKETS (HivMQ:8884)</footer>
 </div>
 
 <script>
-    const API_URL = "https://iot-week6-production.up.railway.app/data";
+    // --- CONFIGURACIÓN MQTT ---
+    const mqttBroker = "wss://broker.hivemq.com:8884/mqtt";
+    const topicTelemetria = "industrial/almacen_auth_89f3/telemetria";
+    const topicComandos = "industrial/almacen_auth_89f3/comandos";
+
+    let mqttClient;
+    let ultimaData = [];
+    let estadoServoManual = false;
+
     const $ = id => document.getElementById(id);
 
-    function fmtTime(d){
-        return d.toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    }
-    function timeAgo(ms){
-        const s = Math.round((Date.now()-ms)/1000);
-        if(s < 5) return 'justo ahora';
-        if(s < 60) return `hace ${s}s`;
-        const m = Math.round(s/60);
-        return `hace ${m} min`;
-    }
-    function extractTimestamp(item, fallbackIndex){
-        const candidates = ['timestamp','time','fecha','ts','date'];
-        for(const key of candidates){
-            if(item[key]){
-                const parsed = new Date(item[key]);
-                if(!isNaN(parsed)) return parsed.getTime();
-            }
-        }
-        return Date.now() - (fallbackIndex*1000);
-    }
+    // Formateador de hora
+    function fmtTime(ms) { return new Date(ms).toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+
+    // UI Estado de conexión
     function setStatus(state, text){
         const dot = $('statusDot');
-        dot.className = 'dot ' + (state === 'ok' ? 'live' : state === 'err' ? 'err' : '');
+        dot.className = 'led ' + (state === 'ok' ? 'live' : state === 'err' ? 'err' : '');
         $('statusText').textContent = text;
     }
 
-    // ---------- Gráfica dibujada a mano en Canvas (sin librerías externas) ----------
-    function drawChart(temps, hums, labels){
+    // Inicializar MQTT
+    function initMQTT() {
+        setStatus('', 'ENLAZANDO...');
+        mqttClient = mqtt.connect(mqttBroker);
+
+        mqttClient.on('connect', () => {
+            setStatus('ok', 'ONLINE');
+            mqttClient.subscribe(topicTelemetria);
+        });
+
+        mqttClient.on('error', (err) => {
+            setStatus('err', 'ERROR DE RED');
+            console.error(err);
+        });
+
+        mqttClient.on('message', (topic, message) => {
+            if (topic === topicTelemetria) {
+                try {
+                    const dataObj = JSON.parse(message.toString());
+                    dataObj.__ts = Date.now();
+
+                    ultimaData.push(dataObj);
+                    if(ultimaData.length > 30) ultimaData.shift();
+
+                    renderDashboard(ultimaData);
+                } catch (e) {
+                    console.error("Payload Inválido", e);
+                }
+            }
+        });
+    }
+
+    // Botón Servo Manual
+    function toggleServo() {
+        estadoServoManual = !estadoServoManual;
+        mqttClient.publish(topicComandos, JSON.stringify({ accion: "SERVO", estado: estadoServoManual }));
+
+        const btn = $('btnServo');
+        if (estadoServoManual) {
+            btn.textContent = "DETENER EXTRACTOR";
+            btn.classList.add("active");
+            $('statServo').innerHTML = '<span style="color:var(--c-temp)">ABIERTO (MANUAL)</span>';
+        } else {
+            btn.textContent = "ACTIVAR MANUAL";
+            btn.classList.remove("active");
+            $('statServo').innerHTML = '<span style="color:var(--text-muted)">CERRADO</span>';
+        }
+    }
+
+    // Motor de Renderizado
+    function renderDashboard(items){
+        if(!items.length) return;
+
+        const last = items[items.length - 1];
+
+        // Parsear valores
+        const t = Number(last.temp ?? 0);
+        const h = Number(last.hum ?? 0);
+        let rawGas = Number(last.gas ?? 0);
+        const g = rawGas > 100 ? (rawGas / 4095) * 100 : rawGas;
+        const d = Number(last.dist ?? 0);
+
+        // Actualizar Tarjetas
+        $('statTemp').textContent = t.toFixed(1);
+        $('statHum').textContent = h.toFixed(1);
+        $('statGas').textContent = g.toFixed(1);
+        $('statDist').textContent = d.toFixed(0);
+        $('statTime').textContent = "Última act: " + fmtTime(last.__ts);
+
+        // Lógica de Alarma
+        const isAlert = (t > 37.0) || (g > 30.0);
+        const cardStatus = $('cardStatus');
+        const statStatus = $('statStatus');
+        const ledStatus = $('ledStatus');
+
+        if(isAlert) {
+            document.body.classList.add('alert-mode');
+            cardStatus.className = "panel p-system danger";
+            statStatus.textContent = "¡PELIGRO!";
+            statStatus.className = "p-value val-alert";
+            ledStatus.className = "led err";
+        } else {
+            document.body.classList.remove('alert-mode');
+            cardStatus.className = "panel p-system safe";
+            statStatus.textContent = "OPERATIVO";
+            statStatus.className = "p-value";
+            statStatus.style.color = "var(--c-ok)";
+            ledStatus.className = "led live";
+        }
+
+        // Render Tabla (Últimos 10)
+        const tableHTML = [...items].reverse().slice(0, 10).map(it => {
+            const _t = Number(it.temp ?? 0);
+            let _g = Number(it.gas ?? 0);
+            _g = _g > 100 ? (_g / 4095) * 100 : _g;
+            const danger = (_t > 37 || _g > 30);
+
+            return `
+            <tr>
+              <td class="t-time">${fmtTime(it.__ts)}</td>
+              <td style="color: ${_t > 37 ? 'var(--c-alert)' : 'var(--c-temp)'}">${_t.toFixed(1)}</td>
+              <td style="color: ${_g > 30 ? 'var(--c-alert)' : 'var(--c-gas)'}">${_g.toFixed(1)}</td>
+              <td>
+                  <span style="background:${danger ? 'var(--c-alert)' : 'var(--c-ok)'}; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold;">
+                    ${danger ? 'ALERTA' : 'OK'}
+                  </span>
+              </td>
+            </tr>`;
+        }).join('');
+        $('logBody').innerHTML = tableHTML;
+
+        // Render Gráfica
+        drawCanvasChart(items);
+    }
+
+    // Dibujado de Gráfica en Canvas
+    function drawCanvasChart(items) {
         const canvas = $('scopeChart');
         const holder = canvas.parentElement;
         const dpr = window.devicePixelRatio || 1;
-        const w = holder.clientWidth;
-        const h = holder.clientHeight;
+        const w = holder.clientWidth, h = holder.clientHeight;
 
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        canvas.style.width = w + 'px';
-        canvas.style.height = h + 'px';
-        const ctx = canvas.getContext('2d');
-        ctx.scale(dpr, dpr);
-        ctx.clearRect(0, 0, w, h);
+        canvas.width = w * dpr; canvas.height = h * dpr;
+        canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+        const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, w, h);
 
-        if (!temps.length) return;
+        const padL = 30, padR = 10, padT = 20, padB = 25;
+        const chartW = w - padL - padR, chartH = h - padT - padB;
 
-        const padL = 42, padR = 42, padT = 14, padB = 24;
-        const chartW = w - padL - padR;
-        const chartH = h - padT - padB;
+        const temps = items.map(it => Number(it.temp ?? 0));
+        const hums = items.map(it => Number(it.hum ?? 0));
+        const gases = items.map(it => { let _g = Number(it.gas ?? 0); return _g > 100 ? (_g/4095)*100 : _g; });
 
-        const tMin = Math.min(...temps), tMax = Math.max(...temps);
-        const hMin = Math.min(...hums), hMax = Math.max(...hums);
-        const tRange = (tMax - tMin) || 1;
-        const hRange = (hMax - hMin) || 1;
-        const tPad = tRange * 0.15, hPad = hRange * 0.15;
+        const getLimits = (arr) => {
+            const min = Math.min(...arr), max = Math.max(...arr);
+            const range = (max - min) || 1; return { min, max, range, pad: range * 0.2 };
+        };
 
-        const xFor = i => padL + (temps.length === 1 ? chartW/2 : (i/(temps.length-1)) * chartW);
-        const yForTemp = v => padT + chartH - ((v - (tMin-tPad)) / (tRange + tPad*2)) * chartH;
-        const yForHum = v => padT + chartH - ((v - (hMin-hPad)) / (hRange + hPad*2)) * chartH;
+        const tLim = getLimits(temps), hLim = getLimits(hums), gLim = getLimits(gases);
+        const xFor = i => padL + (items.length === 1 ? chartW/2 : (i/(items.length-1)) * chartW);
+        const yFor = (v, lim) => padT + chartH - ((v - (lim.min - lim.pad)) / (lim.range + lim.pad*2)) * chartH;
 
-        // grid horizontal
-        ctx.strokeStyle = '#1A2438';
-        ctx.lineWidth = 1;
-        for (let g = 0; g <= 4; g++){
-            const y = padT + (chartH/4)*g;
-            ctx.beginPath();
-            ctx.moveTo(padL, y);
-            ctx.lineTo(w - padR, y);
-            ctx.stroke();
+        // Grilla horizontal
+        ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++){
+            const y = padT + (chartH/4)*i;
+            ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
         }
 
-        function drawLine(values, yFor, color){
+        // Trazador de líneas
+        function trace(values, limits, color) {
             ctx.beginPath();
-            values.forEach((v, i) => {
-                const x = xFor(i), y = yFor(v);
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            });
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
-            ctx.lineJoin = 'round';
-            ctx.stroke();
+            values.forEach((v, i) => { const x = xFor(i), y = yFor(v, limits); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+            ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.stroke();
 
+            // Puntos
             values.forEach((v, i) => {
-                ctx.beginPath();
-                ctx.arc(xFor(i), yFor(v), 2.5, 0, Math.PI*2);
-                ctx.fillStyle = color;
-                ctx.fill();
+                ctx.beginPath(); ctx.arc(xFor(i), yFor(v, limits), 3.5, 0, Math.PI*2);
+                ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = '#111827'; ctx.lineWidth = 1.5; ctx.stroke();
             });
         }
 
-        drawLine(temps, yForTemp, '#F5A742');
-        drawLine(hums, yForHum, '#4DD8D0');
+        trace(hums, hLim, '#06B6D4'); // Humedad
+        trace(gases, gLim, '#EAB308'); // Gas
+        trace(temps, tLim, '#F97316'); // Temperatura
 
-        // ejes: min/max en texto
-        ctx.font = '10px "IBM Plex Mono", monospace';
-        ctx.fillStyle = '#F5A742';
-        ctx.textAlign = 'left';
-        ctx.fillText(tMax.toFixed(1), 2, yForTemp(tMax) + 3);
-        ctx.fillText(tMin.toFixed(1), 2, yForTemp(tMin) + 3);
-
-        ctx.fillStyle = '#4DD8D0';
-        ctx.textAlign = 'right';
-        ctx.fillText(hMax.toFixed(1), w - 2, yForHum(hMax) + 3);
-        ctx.fillText(hMin.toFixed(1), w - 2, yForHum(hMin) + 3);
-
-        // etiquetas de tiempo en el eje X (primera, media, última)
-        ctx.fillStyle = '#7C8AA5';
-        ctx.textAlign = 'left';
-        ctx.fillText(labels[0] || '', padL, h - 6);
-        if (labels.length > 2){
-            ctx.textAlign = 'center';
-            ctx.fillText(labels[Math.floor(labels.length/2)], padL + chartW/2, h - 6);
-        }
-        ctx.textAlign = 'right';
-        ctx.fillText(labels[labels.length-1] || '', w - padR, h - 6);
+        // Etiquetas X (Tiempo)
+        ctx.font = '10px "IBM Plex Mono", monospace'; ctx.fillStyle = '#9CA3AF';
+        ctx.textAlign = 'left'; ctx.fillText(fmtTime(items[0].__ts), padL, h - 5);
+        if(items.length > 2) { ctx.textAlign = 'center'; ctx.fillText(fmtTime(items[Math.floor(items.length/2)].__ts), padL + chartW/2, h - 5); }
+        ctx.textAlign = 'right'; ctx.fillText(fmtTime(items[items.length-1].__ts), w - padR, h - 5);
     }
 
-    function render(items){
-        if(!items || items.length === 0){
-            $('logBody').innerHTML = '<tr><td colspan="5" class="dim" style="text-align:center;padding:24px;">Sin registros todavía</td></tr>';
-            return;
-        }
-        const withTs = items.map((it, i) => ({...it, __ts: extractTimestamp(it, items.length - i)}));
+    // Auto-resize de Canvas
+    window.addEventListener('resize', () => { if (ultimaData.length) drawCanvasChart(ultimaData); });
 
-        const labels = withTs.map(it => new Date(it.__ts).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
-        const temps = withTs.map(it => Number(it.temperature ?? it.temp ?? 0));
-        const hums = withTs.map(it => Number(it.humidity ?? it.hum ?? 0));
-        drawChart(temps, hums, labels);
-
-        const last = withTs[withTs.length - 1];
-        $('statTemp').innerHTML = (Number(last.temperature ?? last.temp ?? 0)).toFixed(1) + '<span class="unit">°C</span>';
-        $('statHum').innerHTML = (Number(last.humidity ?? last.hum ?? 0)).toFixed(1) + '<span class="unit">%</span>';
-        $('statDevice').textContent = last.device ?? 'dispositivo desconocido';
-        $('statEnvio').textContent = 'envío #' + (last.envio ?? '--');
-        $('statAgo').textContent = timeAgo(last.__ts);
-        $('statTime').textContent = fmtTime(new Date(last.__ts));
-        $('statCount').textContent = withTs.length;
-
-        const rows = withTs.slice().reverse().slice(0, 15).map(it => `
-    <tr>
-      <td class="dim">${it.envio ?? '—'}</td>
-      <td>${it.device ?? '—'}</td>
-      <td class="amber">${(Number(it.temperature ?? it.temp ?? 0)).toFixed(1)}</td>
-      <td class="cyan">${(Number(it.humidity ?? it.hum ?? 0)).toFixed(1)}</td>
-      <td class="dim">${fmtTime(new Date(it.__ts))}</td>
-    </tr>`).join('');
-        $('logBody').innerHTML = rows;
-    }
-
-    let ultimaData = [];
-
-    async function fetchData(){
-        try{
-            const res = await fetch(API_URL);
-            if(!res.ok) throw new Error('HTTP ' + res.status);
-            const data = await res.json();
-            const arr = Array.isArray(data) ? data : (data.data || []);
-            ultimaData = arr.slice(-40);
-            render(ultimaData);
-            setStatus('ok', 'En línea');
-        }catch(err){
-            setStatus('err', 'Error: ' + err.message);
-            console.error(err);
-        }
-    }
-
-    window.addEventListener('resize', () => { if (ultimaData.length) render(ultimaData); });
-
-    fetchData();
-    setInterval(fetchData, 10000);
+    // Iniciar
+    initMQTT();
 </script>
 </body>
 </html>
