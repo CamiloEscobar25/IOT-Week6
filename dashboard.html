@@ -252,9 +252,26 @@
     const $ = id => document.getElementById(id);
 
     // Convierte el valor crudo del sensor (0-4095) a ppm, igual que en el ESP32
+    // Misma tabla de calibración que el ESP32, medida en Wokwi (raw -> ppm)
+    const rawCalibracion = [843, 3348, 3959, 4041];
+    const ppmCalibracion = [0.1, 105, 10000, 100000];
+
     function rawToPPM(raw) {
-        const fraccion = raw / 4095;
-        return 0.1 * Math.pow(10, fraccion * 6);
+        if (raw <= rawCalibracion[0]) return ppmCalibracion[0];
+        if (raw >= rawCalibracion[rawCalibracion.length - 1]) return ppmCalibracion[ppmCalibracion.length - 1];
+
+        for (let i = 0; i < rawCalibracion.length - 1; i++) {
+            if (raw >= rawCalibracion[i] && raw <= rawCalibracion[i + 1]) {
+                const x0 = Math.log10(rawCalibracion[i]);
+                const x1 = Math.log10(rawCalibracion[i + 1]);
+                const y0 = Math.log10(ppmCalibracion[i]);
+                const y1 = Math.log10(ppmCalibracion[i + 1]);
+                const x  = Math.log10(raw);
+                const y  = y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+                return Math.pow(10, y);
+            }
+        }
+        return ppmCalibracion[ppmCalibracion.length - 1];
     }
 
     // Formateador de hora
