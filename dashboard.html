@@ -227,7 +227,7 @@
             <div class="chart-header"><span>LOG DE EVENTOS (Últimos 10)</span></div>
             <table id="dataTable">
                 <thead>
-                <tr><th>Hora</th><th>T(°C)</th><th>G(%)</th><th>Est.</th></tr>
+                <tr><th>Hora</th><th>T(°C)</th><th>G(ppm)</th><th>Est.</th></tr>
                 </thead>
                 <tbody id="logBody">
                 <tr><td colspan="4" style="text-align:center; color:#6C7A9C;">A la espera de datos...</td></tr>
@@ -236,14 +236,16 @@
         </div>
     </div>
 
-    <footer>TRANSMISIÓN SEGURA TLS/SSL - MQTT WEBSOCKETS (HivMQ:8884)</footer>
+    <footer>TRANSMISIÓN SEGURA TLS/SSL - MQTT WEBSOCKETS (HiveMQ Cloud:8884)</footer>
 </div>
 
 <script>
-    // --- CONFIGURACIÓN MQTT ---
-    const mqttBroker = "wss://broker.hivemq.com:8884/mqtt";
+    // --- CONFIGURACIÓN MQTT (HiveMQ Cloud) ---
+    const mqttBroker = "wss://978946dac5b84c10b8eaa021f0a435eb.s1.eu.hivemq.cloud:8884/mqtt";
     const topicTelemetria = "industrial/almacen_auth_89f3/telemetria";
     const topicComandos = "industrial/almacen_auth_89f3/comandos";
+    const mqttUser = "vamilo";
+    const mqttPass = "a1c2b3d4";
 
     let mqttClient;
     let ultimaData = [];
@@ -251,8 +253,8 @@
 
     const $ = id => document.getElementById(id);
 
-    // Convierte el valor crudo del sensor (0-4095) a ppm, igual que en el ESP32
-    // Misma tabla de calibración que el ESP32, medida en Wokwi (raw -> ppm)
+    // Tabla de calibración real del sensor MQ-2 en Wokwi (raw ADC -> ppm)
+    // Medida a mano: se movió el potenciómetro y se anotó qué "gas" llegaba por MQTT
     const rawCalibracion = [843, 3348, 3959, 4041];
     const ppmCalibracion = [0.1, 105, 10000, 100000];
 
@@ -287,7 +289,10 @@
     // Inicializar MQTT
     function initMQTT() {
         setStatus('', 'ENLAZANDO...');
-        mqttClient = mqtt.connect(mqttBroker);
+        mqttClient = mqtt.connect(mqttBroker, {
+            username: mqttUser,
+            password: mqttPass
+        });
 
         mqttClient.on('connect', () => {
             setStatus('ok', 'ONLINE');
@@ -342,14 +347,13 @@
         // Parsear valores
         const t = Number(last.temp ?? 0);
         const h = Number(last.hum ?? 0);
-        const rawGas = Number(last.gas ?? 0);
-        const g = rawToPPM(rawGas);
+        const g = rawToPPM(Number(last.gas ?? 0));
         const d = Number(last.dist ?? 0);
 
         // Actualizar Tarjetas
         $('statTemp').textContent = t.toFixed(1);
         $('statHum').textContent = h.toFixed(1);
-        $('statGas').textContent = g.toFixed(1);
+        $('statGas').textContent = g.toFixed(0);
         $('statDist').textContent = d.toFixed(0);
         $('statTime').textContent = "Última act: " + fmtTime(last.__ts);
 
@@ -414,7 +418,7 @@
 
         const temps = items.map(it => Number(it.temp ?? 0));
         const hums = items.map(it => Number(it.hum ?? 0));
-        const gases = items.map(it => { let _g = Number(it.gas ?? 0); return _g > 100 ? (_g/4095)*100 : _g; });
+        const gases = items.map(it => rawToPPM(Number(it.gas ?? 0)));
 
         const getLimits = (arr) => {
             const min = Math.min(...arr), max = Math.max(...arr);
