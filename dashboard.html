@@ -183,8 +183,8 @@
 
         <div class="panel p-gas">
             <div class="p-header"><span>Gas (MQ-2)</span> <span class="led" style="background:var(--c-gas)"></span></div>
-            <div class="p-value val-gas"><span id="statGas">--.-</span><span class="p-unit">%</span></div>
-            <div class="p-sub">Riesgo de Fuga > 30%</div>
+            <div class="p-value val-gas"><span id="statGas">--.-</span><span class="p-unit">ppm</span></div>
+            <div class="p-sub">Riesgo de Fuga > 1000 ppm</div>
         </div>
 
         <div class="panel p-hum">
@@ -250,6 +250,12 @@
     let estadoServoManual = false;
 
     const $ = id => document.getElementById(id);
+
+    // Convierte el valor crudo del sensor (0-4095) a ppm, igual que en el ESP32
+    function rawToPPM(raw) {
+        const fraccion = raw / 4095;
+        return 0.1 * Math.pow(10, fraccion * 6);
+    }
 
     // Formateador de hora
     function fmtTime(ms) { return new Date(ms).toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
@@ -320,7 +326,7 @@
         const t = Number(last.temp ?? 0);
         const h = Number(last.hum ?? 0);
         const rawGas = Number(last.gas ?? 0);
-        const g = rawGas > 1000 ? (rawGas / 4095) * 100000 : rawGas;
+        const g = rawToPPM(rawGas);
         const d = Number(last.dist ?? 0);
 
         // Actualizar Tarjetas
@@ -331,7 +337,7 @@
         $('statTime').textContent = "Última act: " + fmtTime(last.__ts);
 
         // Lógica de Alarma
-        const isAlert = (t > 37.0) || (g > 0.2);
+        const isAlert = (t > 37.0) || (g > 1000);
         const cardStatus = $('cardStatus');
         const statStatus = $('statStatus');
         const ledStatus = $('ledStatus');
@@ -354,15 +360,14 @@
         // Render Tabla (Últimos 10)
         const tableHTML = [...items].reverse().slice(0, 10).map(it => {
             const _t = Number(it.temp ?? 0);
-            let _g = Number(it.gas ?? 0);
-            _g = _g > 1000 ? (_g / 4095) * 100000 : _g;
-            const danger = (_t > 37 || _g > 0.2);
+            const _g = rawToPPM(Number(it.gas ?? 0));
+            const danger = (_t > 37 || _g > 1000);
 
             return `
             <tr>
               <td class="t-time">${fmtTime(it.__ts)}</td>
               <td style="color: ${_t > 37 ? 'var(--c-alert)' : 'var(--c-temp)'}">${_t.toFixed(1)}</td>
-              <td style="color: ${_g > 30 ? 'var(--c-alert)' : 'var(--c-gas)'}">${_g.toFixed(1)}</td>
+              <td style="color: ${_g > 1000 ? 'var(--c-alert)' : 'var(--c-gas)'}">${_g.toFixed(0)}</td>
               <td>
                   <span style="background:${danger ? 'var(--c-alert)' : 'var(--c-ok)'}; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold;">
                     ${danger ? 'ALERTA' : 'OK'}
