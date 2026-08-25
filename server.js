@@ -1,27 +1,29 @@
 // ============================================
-// SERVIDOR SCADA IOT CON DATALOGGER MQTT
+// SERVIDOR SCADA IOT CON DATALOGGER MQTT (HIVEMQ CLOUD)
 // ============================================
 
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const mqtt = require('mqtt'); // Librería MQTT para Node.js
+const mqtt = require('mqtt');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-app.use(express.static('public')); // Aquí debe ir tu HTML (ej. public/dashboard.html)
+app.use(express.static('public'));
 
-// --- CONFIGURACIÓN DEL DATALOGGER MQTT ---
-const mqttBroker = "mqtt://broker.hivemq.com";
+// --- CONFIGURACIÓN DEL DATALOGGER MQTT CIFRADO ---
+const mqttBroker = "mqtts://vamilo:a1c2b3d4@978946dac5b84c10b8eaa021f0a435eb.s1.eu.hivemq.cloud:8883";
 const topicTelemetria = "industrial/almacen_auth_89f3/telemetria";
 const ARCHIVO_DB = 'datos.json';
 
-// Cliente MQTT en el Backend
-const mqttClient = mqtt.connect(mqttBroker);
+// Cliente MQTT en el Backend con TLS
+const mqttClient = mqtt.connect(mqttBroker, {
+    rejectUnauthorized: false
+});
 
 mqttClient.on('connect', () => {
-    console.log(`📡 [MQTT] Backend conectado exitosamente al Broker`);
+    console.log(`📡 [MQTT] Backend conectado exitosamente a HiveMQ Cloud (TLS)`);
     mqttClient.subscribe(topicTelemetria);
     console.log(`👂 [MQTT] Escuchando telemetría en: ${topicTelemetria}`);
 });
@@ -31,25 +33,21 @@ mqttClient.on('message', (topic, message) => {
         try {
             const telemetria = JSON.parse(message.toString());
 
-            // Leer base de datos actual
             let datosGuardados = [];
             if (fs.existsSync(ARCHIVO_DB)) {
                 datosGuardados = JSON.parse(fs.readFileSync(ARCHIVO_DB, 'utf8'));
             }
 
-            // Limitar a los últimos 2000 registros para no saturar la memoria de Railway
             if (datosGuardados.length >= 2000) {
                 datosGuardados.shift();
             }
 
-            // Enriquecer el dato con la hora del servidor
             const nuevoRegistro = {
                 ...telemetria,
                 timestamp: new Date().toISOString(),
                 origen: "MQTT_AutoLogger"
             };
 
-            // Guardar
             datosGuardados.push(nuevoRegistro);
             fs.writeFileSync(ARCHIVO_DB, JSON.stringify(datosGuardados, null, 2));
             console.log(`💾 [DATALOGGER] Registro guardado. (Temp: ${telemetria.temp}°C, Gas: ${telemetria.gas})`);
@@ -60,10 +58,8 @@ mqttClient.on('message', (topic, message) => {
     }
 });
 
+// --- RUTAS HTTP ---
 
-// --- RUTAS HTTP (API REST Tradicional) ---
-
-// POST de respaldo (Por si algún sensor viejo usa HTTP en vez de MQTT)
 app.post("/data", (req, res) => {
     const datosRecibidos = req.body;
     if (!datosRecibidos || Object.keys(datosRecibidos).length === 0) {
@@ -88,7 +84,6 @@ app.post("/data", (req, res) => {
     }
 });
 
-// GET para consultar el historial completo de la base de datos
 app.get("/data", (req, res) => {
     try {
         if (fs.existsSync(ARCHIVO_DB)) {
@@ -103,8 +98,7 @@ app.get("/data", (req, res) => {
 });
 
 app.get("/dashboard", (req, res) => {
-    // Asegúrate de que tu archivo HTML se llame dashboard.html y esté en la misma carpeta o en /public
-    res.sendFile(path.join(__dirname, 'dashboard.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.get("/", (req, res) => {
@@ -112,7 +106,7 @@ app.get("/", (req, res) => {
         servicio: "SCADA Backend Server",
         estado: "Operativo",
         modulos: {
-            mqtt_logger: "Activo escuchando a HiveMQ",
+            mqtt_logger: "Activo escuchando a HiveMQ Cloud",
             api_rest: "Activa"
         }
     });
